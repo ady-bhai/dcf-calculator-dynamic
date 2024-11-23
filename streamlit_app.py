@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
+import requests
 import plotly.graph_objects as go
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -13,6 +13,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Alpha Vantage API settings
+API_KEY = "YOUR_API_KEY"  # Replace with your actual Alpha Vantage API key
+BASE_URL = "https://www.alphavantage.co/query"
+
 # Sidebar Inputs
 with st.sidebar:
     st.title("📉 Discounted Cash Flow Calculator")
@@ -21,40 +25,45 @@ with st.sidebar:
     # Ticker Input
     ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, MSFT):", value="AAPL")
 
+    # Default Inputs
+    initial_cash_flow = 100.0
+    growth_rate = 5.0
+    discount_rate = 10.0
+    forecast_years = 10
+    terminal_growth_rate = 2.0
+
     # Fetch Data Button
     if st.button("Fetch Financial Data"):
         try:
-            stock = yf.Ticker(ticker)
+            # Fetch free cash flow data from Alpha Vantage
+            fcf_response = requests.get(
+                BASE_URL,
+                params={
+                    "function": "CASH_FLOW",
+                    "symbol": ticker,
+                    "apikey": API_KEY,
+                }
+            )
+            fcf_data = fcf_response.json()
 
-            # Extract Financial Data
-            financials = stock.financials.T
-            cashflow = stock.cashflow.T
-            info = stock.info
+            # Check if data is available
+            if "annualReports" in fcf_data:
+                annual_reports = fcf_data["annualReports"]
+                latest_fcf = int(annual_reports[0]["operatingCashflow"]) - int(annual_reports[0].get("capitalExpenditures", 0))
+                initial_cash_flow = latest_fcf / 1e6  # Convert to millions
+                st.success(f"Free Cash Flow fetched successfully for {ticker.upper()}!")
+            else:
+                st.error(f"Financial data for {ticker.upper()} is not available. Please enter manually.")
 
-            # Extract Key Metrics
-            revenue = financials["Total Revenue"].iloc[-1]
-            operating_cash_flow = cashflow["Total Cash From Operating Activities"].iloc[-1]
-            capex = abs(cashflow["Capital Expenditures"].iloc[-1])  # Make positive
-            fcf = operating_cash_flow - capex  # Free Cash Flow
-
-            # Set Default Inputs
-            initial_cash_flow = fcf / 1e6  # Convert to millions
-            growth_rate = 5.0
-            discount_rate = 10.0
-            forecast_years = 10
-            terminal_growth_rate = 2.0
-
-            st.success(f"Data fetched successfully for {ticker.upper()}!")
         except Exception as e:
-            st.error(f"Error fetching data: {e}")
-            initial_cash_flow = 100.0
-    else:
-        # Default Inputs (if no data fetched)
-        initial_cash_flow = st.number_input("Initial Cash Flow ($M)", value=100.0, step=1.0)
-        growth_rate = st.number_input("Annual Growth Rate (%)", value=5.0, step=0.1)
-        discount_rate = st.number_input("Discount Rate (%)", value=10.0, step=0.1)
-        forecast_years = st.slider("Forecast Period (Years)", min_value=1, max_value=20, value=10, step=1)
-        terminal_growth_rate = st.number_input("Terminal Growth Rate (%)", value=2.0, step=0.1)
+            st.error(f"Error fetching data for {ticker}: {e}")
+
+    # Allow users to manually adjust or override inputs
+    initial_cash_flow = st.number_input("Initial Cash Flow ($M):", value=initial_cash_flow, step=1.0)
+    growth_rate = st.number_input("Annual Growth Rate (%)", value=growth_rate, step=0.1)
+    discount_rate = st.number_input("Discount Rate (%)", value=discount_rate, step=0.1)
+    forecast_years = st.slider("Forecast Period (Years)", min_value=1, max_value=20, value=forecast_years, step=1)
+    terminal_growth_rate = st.number_input("Terminal Growth Rate (%)", value=terminal_growth_rate, step=0.1)
 
 # DCF Calculation
 def calculate_dcf(initial_cash_flow, growth_rate, discount_rate, forecast_years, terminal_growth_rate):
