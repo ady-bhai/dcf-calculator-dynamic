@@ -51,6 +51,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Initialize session state for fetched data
+if "initial_cash_flow" not in st.session_state:
+    st.session_state["initial_cash_flow"] = 100.0
+if "outstanding_shares" not in st.session_state:
+    st.session_state["outstanding_shares"] = 1000.0
+if "fetched" not in st.session_state:
+    st.session_state["fetched"] = False
+
 # Sidebar Inputs
 with st.sidebar:
     st.title("📉 Discounted Cash Flow Calculator")
@@ -58,14 +66,6 @@ with st.sidebar:
 
     # Ticker Input
     ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, MSFT):", value="AAPL")
-
-    # Default inputs for DCF
-    initial_cash_flow = 100.0
-    growth_rate = 5.0
-    discount_rate = 10.0
-    forecast_years = 10
-    terminal_growth_rate = 2.0
-    outstanding_shares = None
 
     # Fetch Data Button
     if st.button("Fetch Financial Data"):
@@ -96,26 +96,30 @@ with st.sidebar:
             if "annualReports" in fcf_data:
                 annual_reports = fcf_data["annualReports"]
                 latest_fcf = int(annual_reports[0]["operatingCashflow"]) - int(annual_reports[0].get("capitalExpenditures", 0))
-                initial_cash_flow = latest_fcf / 1e6  # Convert to millions
+                st.session_state["initial_cash_flow"] = latest_fcf / 1e6  # Convert to millions
                 st.success(f"Free Cash Flow fetched successfully for {ticker.upper()}!")
             else:
                 st.error(f"Financial data for {ticker.upper()} is not available. Please enter manually.")
 
             # Extract outstanding shares
             outstanding_shares = float(overview_data.get("SharesOutstanding", 0)) / 1e6  # Convert to millions
-            if outstanding_shares == 0:
+            if outstanding_shares > 0:
+                st.session_state["outstanding_shares"] = outstanding_shares
+            else:
                 st.error(f"Outstanding shares for {ticker.upper()} are unavailable. Please enter manually.")
+
+            st.session_state["fetched"] = True
 
         except Exception as e:
             st.error(f"Error fetching data for {ticker}: {e}")
 
     # Manual input fallback for all fields
-    initial_cash_flow = st.number_input("Initial Cash Flow ($M):", value=initial_cash_flow, step=1.0)
-    growth_rate = st.number_input("Annual Growth Rate (%)", value=growth_rate, step=0.1)
-    discount_rate = st.number_input("Discount Rate (%)", value=discount_rate, step=0.1)
-    forecast_years = st.slider("Forecast Period (Years)", min_value=1, max_value=20, value=forecast_years, step=1)
-    terminal_growth_rate = st.number_input("Terminal Growth Rate (%)", value=terminal_growth_rate, step=0.1)
-    outstanding_shares = st.number_input("Outstanding Shares (in Millions):", value=outstanding_shares or 1000.0, step=1.0)
+    initial_cash_flow = st.number_input("Initial Cash Flow ($M):", value=st.session_state["initial_cash_flow"], step=1.0)
+    growth_rate = st.number_input("Annual Growth Rate (%)", value=5.0, step=0.1)
+    discount_rate = st.number_input("Discount Rate (%)", value=10.0, step=0.1)
+    forecast_years = st.slider("Forecast Period (Years)", min_value=1, max_value=20, value=10, step=1)
+    terminal_growth_rate = st.number_input("Terminal Growth Rate (%)", value=2.0, step=0.1)
+    outstanding_shares = st.number_input("Outstanding Shares (in Millions):", value=st.session_state["outstanding_shares"], step=1.0)
 
 # DCF Calculation
 def calculate_dcf(initial_cash_flow, growth_rate, discount_rate, forecast_years, terminal_growth_rate):
@@ -139,7 +143,7 @@ def calculate_dcf(initial_cash_flow, growth_rate, discount_rate, forecast_years,
 
     return cash_flows, present_values, terminal_value, terminal_value_pv, total_pv
 
-# Perform DCF Calculations
+# Use session state to persist fetched or manually input data
 cash_flows, present_values, terminal_value, terminal_value_pv, total_pv = calculate_dcf(
     initial_cash_flow, growth_rate, discount_rate, forecast_years, terminal_growth_rate
 )
@@ -151,33 +155,10 @@ if outstanding_shares > 0:
 
 # Display Results
 st.markdown('<div class="section-header">DCF Results</div>', unsafe_allow_html=True)
-
-with st.container():
-    st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="metric-box">
-        <div class="metric-value">${total_pv:,.2f}M</div>
-        <div class="metric-label">Enterprise Value</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown(f"""
-    <div class="metric-box">
-        <div class="metric-value">${terminal_value_pv:,.2f}M</div>
-        <div class="metric-label">Terminal Value (PV)</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if fair_share_value:
-        st.markdown(f"""
-        <div class="metric-box">
-            <div class="metric-value">${fair_share_value:,.2f}</div>
-            <div class="metric-label">Fair Share Value</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
+st.metric(label="Enterprise Value", value=f"${total_pv:,.2f}M")
+st.metric(label="Terminal Value (PV)", value=f"${terminal_value_pv:,.2f}M")
+if fair_share_value:
+    st.metric(label="Fair Share Value", value=f"${fair_share_value:,.2f}")
 
 # Visualization: Cash Flows and Present Values
 st.markdown('<div class="section-header">Cash Flow Analysis</div>', unsafe_allow_html=True)
@@ -191,22 +172,3 @@ fig.update_layout(
     barmode="group"
 )
 st.plotly_chart(fig)
-
-# Heatmap Visualization for Sensitivity Analysis
-st.markdown('<div class="section-header">Sensitivity Analysis</div>', unsafe_allow_html=True)
-discount_rates = np.linspace(discount_rate - 5, discount_rate + 5, 10)
-growth_rates = np.linspace(growth_rate - 2, growth_rate + 2, 10)
-
-sensitivity = np.zeros((len(discount_rates), len(growth_rates)))
-for i, dr in enumerate(discount_rates):
-    for j, gr in enumerate(growth_rates):
-        _, _, _, _, pv = calculate_dcf(initial_cash_flow, gr, dr, forecast_years, terminal_growth_rate)
-        sensitivity[i, j] = pv
-
-fig, ax = plt.subplots(figsize=(10, 8))
-sns.heatmap(sensitivity, xticklabels=np.round(growth_rates, 2), yticklabels=np.round(discount_rates, 2),
-            annot=True, fmt=".2f", cmap="viridis", ax=ax)
-ax.set_title("Sensitivity Analysis: Total PV by Growth and Discount Rates")
-ax.set_xlabel("Growth Rate (%)")
-ax.set_ylabel("Discount Rate (%)")
-st.pyplot(fig)
