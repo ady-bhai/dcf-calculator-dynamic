@@ -130,7 +130,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Alpha Vantage API settings
-API_KEY = "YOUR_API_KEY"
+API_KEY = "ALH36ZVG26EVQNYP"
 BASE_URL = "https://www.alphavantage.co/query"
 
 # Main header
