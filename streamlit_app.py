@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # Alpha Vantage API settings
-API_KEY = "YOUR_API_KEY"  # Replace with your actual Alpha Vantage API key
+API_KEY = "ALH36ZVG26EVQNYP"  # Replace with your actual Alpha Vantage API key
 BASE_URL = "https://www.alphavantage.co/query"
 
 # Sidebar Inputs
