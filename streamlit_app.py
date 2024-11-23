@@ -31,6 +31,7 @@ with st.sidebar:
     discount_rate = 10.0
     forecast_years = 10
     terminal_growth_rate = 2.0
+    outstanding_shares = None
 
     # Fetch Data Button
     if st.button("Fetch Financial Data"):
@@ -46,6 +47,17 @@ with st.sidebar:
             )
             fcf_data = fcf_response.json()
 
+            # Fetch company overview to get outstanding shares
+            overview_response = requests.get(
+                BASE_URL,
+                params={
+                    "function": "OVERVIEW",
+                    "symbol": ticker,
+                    "apikey": API_KEY,
+                }
+            )
+            overview_data = overview_response.json()
+
             # Check if data is available
             if "annualReports" in fcf_data:
                 annual_reports = fcf_data["annualReports"]
@@ -54,6 +66,11 @@ with st.sidebar:
                 st.success(f"Free Cash Flow fetched successfully for {ticker.upper()}!")
             else:
                 st.error(f"Financial data for {ticker.upper()} is not available. Please enter manually.")
+
+            # Extract outstanding shares
+            outstanding_shares = float(overview_data.get("SharesOutstanding", 0)) / 1e6  # Convert to millions
+            if outstanding_shares == 0:
+                st.error(f"Outstanding shares for {ticker.upper()} are unavailable. Please enter manually.")
 
         except Exception as e:
             st.error(f"Error fetching data for {ticker}: {e}")
@@ -64,6 +81,7 @@ with st.sidebar:
     discount_rate = st.number_input("Discount Rate (%)", value=discount_rate, step=0.1)
     forecast_years = st.slider("Forecast Period (Years)", min_value=1, max_value=20, value=forecast_years, step=1)
     terminal_growth_rate = st.number_input("Terminal Growth Rate (%)", value=terminal_growth_rate, step=0.1)
+    outstanding_shares = st.number_input("Outstanding Shares (in Millions):", value=outstanding_shares or 1000.0, step=1.0)
 
 # DCF Calculation
 def calculate_dcf(initial_cash_flow, growth_rate, discount_rate, forecast_years, terminal_growth_rate):
@@ -92,10 +110,18 @@ cash_flows, present_values, terminal_value, terminal_value_pv, total_pv = calcul
     initial_cash_flow, growth_rate, discount_rate, forecast_years, terminal_growth_rate
 )
 
+# Calculate Fair Share Value
+if outstanding_shares > 0:
+    fair_share_value = total_pv / outstanding_shares
+else:
+    fair_share_value = None
+
 # Results Display
 st.subheader("Results")
 st.metric(label="Total Present Value (Enterprise Value)", value=f"${total_pv:,.2f}M")
 st.metric(label="Terminal Value (PV)", value=f"${terminal_value_pv:,.2f}M")
+if fair_share_value:
+    st.metric(label="Fair Share Value", value=f"${fair_share_value:,.2f}")
 
 # Visualization: Cash Flows and Present Values
 st.subheader("Cash Flow Analysis")
