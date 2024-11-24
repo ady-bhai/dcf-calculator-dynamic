@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # Alpha Vantage API settings
-API_KEY = "ALH36ZVG26EVQNYP"  # Replace with your Alpha Vantage API key
+API_KEY = "9R87QX5PYLTNVJI1"  # Replace with your Alpha Vantage API key
 BASE_URL = "https://www.alphavantage.co/query"
 
 # Styling for headers and sections
